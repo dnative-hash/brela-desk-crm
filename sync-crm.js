@@ -148,6 +148,9 @@ const suites = FULL
   } else {
     log('crm/main already matches origin/main (no merge needed)');
     if (DRY) return finish(originMain, crmMain, true);
+    // Nothing to merge, so skip checks/tests/push — but still mirror new branches.
+    const mirrored = await mirrorBranches();
+    return finish(originMain, crmMain, true, mirrored, false);
   }
 
   // 3. Word-package feature checks ----------------------------------------------
@@ -204,6 +207,12 @@ const suites = FULL
   info(`crm/main = ${git('rev-parse crm/main').slice(0, 7)} — content identical to origin/main ✓`);
 
   // 7. mirror feature branches ------------------------------------------------------
+  const mirrored = await mirrorBranches();
+
+  return finish(originMain, crmMain, true, mirrored);
+})().catch(e => { console.error(e); cleanup(); process.exit(1); });
+
+async function mirrorBranches() {
   log('Mirror unmerged feature branches to crm');
   const originBranches = git('for-each-ref refs/remotes/origin --format=%(refname:short)')
     .split('\n').filter(b => b && b !== 'origin/HEAD' && b !== 'origin').map(b => b.replace(/^origin\//, ''));
@@ -218,17 +227,16 @@ const suites = FULL
     else mirrored++;
   }
   if (!mirrored) info('nothing to mirror — all branches already exist on crm');
+  return mirrored;
+}
 
-  return finish(originMain, crmMain, true, mirrored);
-})().catch(e => { console.error(e); cleanup(); process.exit(1); });
-
-function finish(originMain, crmMain, ok, mirrored = 0) {
+function finish(originMain, crmMain, ok, mirrored = 0, ranSuites = true) {
   console.log(`
 =============================================
 ${ok ? 'DONE ✓' : 'STOPPED ✗'}
   origin/main: ${originMain.slice(0, 7)}
   crm/main:    ${gitAllowFail(['rev-parse', 'crm/main']).slice(0, 7)}
-  suites run:  ${suites.join(', ')}
+  suites run:  ${ranSuites ? suites.join(', ') : 'skipped (no main changes)'}
   mirrored:    ${mirrored || '0 new'}
 =============================================`);
   process.exitCode = ok ? 0 : 1;
