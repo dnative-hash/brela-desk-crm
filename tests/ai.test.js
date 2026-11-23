@@ -12,7 +12,7 @@ const mlog=async()=>(await fetch(MOCK+'/__log')).json(),mreset=()=>fetch(MOCK+'/
  // ---- defaults
  const d=(await call('GET','/ai/settings')).j,s=d.settings;
  ok('good defaults are ready: Anthropic Sonnet, low temperature, a BRELA-focused system prompt, safe limits, privacy on',s.provider==='anthropic'&&s.models.anthropic==='claude-sonnet-5-5'&&s.temperature===0.2&&s.max_tokens===4096&&/BRELA/.test(s.system_prompt)&&/\[\[field_name\]\]/.test(s.system_prompt)&&s.daily_limit===200&&s.hourly_per_user===30&&s.privacy==='standard'&&s.min_level==='STAFF',s);
- ok('five providers plus a custom endpoint are offered, each with model suggestions and where to get a key',Object.keys(d.providers).sort().join()==='anthropic,custom,google,mistral,openai,xai'&&d.providers.openai.models.length>=1&&d.providers.google.keyUrl&&Object.values(d.keys).every(k=>!k.set),Object.keys(d.providers));
+ ok('seven providers plus a custom endpoint are offered, each with model suggestions and where to get a key',Object.keys(d.providers).sort().join()==='anthropic,custom,deepseek,google,kimi,mistral,openai,xai'&&d.providers.openai.models.length>=1&&d.providers.google.keyUrl&&Object.values(d.keys).every(k=>!k.set),Object.keys(d.providers));
  ok('loading models needs a saved key first',(await call('POST','/ai/models')).s===400);
  ok('the AI says clearly that it is not set up yet',(await call('GET','/ai/status')).j.configured===false);
  // ---- permissions
@@ -33,7 +33,7 @@ const mlog=async()=>(await fetch(MOCK+'/__log')).json(),mreset=()=>fetch(MOCK+'/
  ok('status now shows the AI is ready',(r=>r.configured&&r.can_use&&r.provider==='anthropic'&&r.blocked===null)((await call('GET','/ai/status')).j));
  // ---- every provider speaks its own protocol correctly
  const wire={};
- for(const p of ['anthropic','openai','google','xai','mistral','custom']){
+ for(const p of ['anthropic','openai','google','xai','mistral','kimi','deepseek','custom']){
   const key=GOOD+'-'+p;await call('PUT','/ai/settings',{provider:p,models:{[p]:'m-'+p},custom_base_url:'http://localhost:4020/custom',temperature:1.7,max_tokens:4096,api_key:key});
   await mreset();const t=await call('POST','/ai/test');const lg=(await mlog()).filter(x=>x.method==='POST');wire[p]={t,e:lg[lg.length-1],key};
   ok(`${p}: the test call succeeds and is billed to the right endpoint`,t.s===200&&t.j.ok&&t.j.reply==='OK'&&t.j.model==='m-'+p&&wire[p].e&&wire[p].e.prov===p,t.j)}
@@ -41,7 +41,7 @@ const mlog=async()=>(await fetch(MOCK+'/__log')).json(),mreset=()=>fetch(MOCK+'/
  ok('anthropic: x-api-key header, version header, temperature capped at 1, max_tokens, system prompt with the built-in output rules',A.path==='/v1/messages'&&A.headers.xapikey===wire.anthropic.key&&A.headers.version==='2023-06-01'&&A.body.model==='m-anthropic'&&A.body.temperature===1&&A.body.max_tokens===64&&/BRELA/.test(A.body.system)&&/Non-negotiable output rules/.test(A.body.system),A.body);
  ok('openai: bearer key, system message, max_completion_tokens (not max_tokens), temperature as set; the connection test asks for only 64 tokens (cheap)',O.path==='/chat/completions'&&O.headers.auth==='Bearer '+wire.openai.key&&O.body.messages[0].role==='system'&&O.body.max_completion_tokens===64&&!('max_tokens' in O.body)&&O.body.temperature===1.7,O.body);
  ok('gemini: key header, systemInstruction, generationConfig',G.path==='/models/m-google:generateContent'&&G.headers.google===wire.google.key&&/BRELA/.test(G.body.systemInstruction.parts[0].text)&&G.body.generationConfig.maxOutputTokens===64&&G.body.generationConfig.temperature===1.7,G.body);
- ok('xai, mistral and a custom endpoint use the OpenAI-compatible format with max_tokens',['xai','mistral','custom'].every(p=>wire[p].e.path==='/chat/completions'&&wire[p].e.body.max_tokens===64&&wire[p].e.headers.auth==='Bearer '+wire[p].key));
+ ok('xai, mistral, kimi, deepseek and a custom endpoint use the OpenAI-compatible format with max_tokens',['xai','mistral','kimi','deepseek','custom'].every(p=>wire[p].e.path==='/chat/completions'&&wire[p].e.body.max_tokens===64&&wire[p].e.headers.auth==='Bearer '+wire[p].key));
  // ---- models are loaded live from each provider
  const models=async p=>{await call('PUT','/ai/settings',{provider:p});return (await call('POST','/ai/models')).j.models};
  ok('live model lists: anthropic, gemini (chat models only), openai (chat models only), xai',(await models('anthropic')).join()==='claude-haiku-5-5,claude-opus-5-5,claude-sonnet-5-5'&&(await models('google')).join()==='gemini-2.5-flash,gemini-2.5-pro'&&(await models('openai')).join()==='gpt-5,gpt-5-mini'&&(await models('xai')).includes('grok-4'));
@@ -59,6 +59,12 @@ const mlog=async()=>(await fetch(MOCK+'/__log')).json(),mreset=()=>fetch(MOCK+'/
  await call('PUT','/ai/settings',{hourly_per_user:1});ok('first request goes through',(await ex()).s===200);const e2=await ex();ok('the hourly limit per person stops the second',e2.s===429&&/last hour/.test(e2.j.error),e2.j);
  await call('PUT','/ai/settings',{hourly_per_user:30,daily_limit:1});const e3=await ex();ok('the daily limit stops everyone',e3.s===429&&/daily AI limit/.test(e3.j.error),e3.j);
  await call('PUT','/ai/settings',{daily_limit:200});ok('raising the limit allows requests again; tests do not count',(await ex()).s===200);
+ // industrial business plan: the AI drafts wording only, using the stored prompt; the answer is cleaned into form fields
+ {const dr=await call('POST',`/cases/${c.id}/scenarios/industry/draft`,{answers:{main_activity:'Manufacture of lime',products_description:'Lime',factory_location:'Tanga'},only:['location_advantage','waste_types','marketing_bullets','benefits','products']}),lg=await (await fetch('http://localhost:4020/__log')).json(),last=lg[lg.length-1]||{};
+  ok('the AI drafts the wording sections of a business plan, cleaned into fields (bullets without dashes, benefits as heading|text, unknown keys dropped)',dr.s===200&&dr.j.drafts.location_advantage==='Good road and port links.'&&dr.j.drafts.marketing_bullets==='Competitive pricing\nDealer network'&&dr.j.drafts.benefits==='Employment Creation|Direct jobs.\nLocal Market Stimulus|Local suppliers.'&&!('products' in dr.j.drafts),dr);
+  ok('the business plan prompt is the stored industry prompt and carries only the facts',/business plan/i.test(JSON.stringify(last.body||{}).slice(0,3000))&&/FACTS \(use only these\)/.test(JSON.stringify(last.body||{}))&&/Manufacture of lime/.test(JSON.stringify(last.body||{})));
+  const ps=(await call('GET','/ai/settings')).j;ok('the business plan prompt is listed with its default',/Business Plan for Establishing an Industry/.test(ps.settings.industry_prompt)&&ps.defaults.industry_prompt===ps.settings.industry_prompt);
+  ok('an over-long business plan prompt is refused',(await call('PUT','/ai/settings',{industry_prompt:'x'.repeat(12001)})).s===400)}
  await call('PUT','/ai/settings',{min_level:'SENIOR'});await as('juma@test.co',UP);const eJ=await ex();await as('sia@test.co',UP);const eS=await ex();
  ok('"who can use the AI" is enforced',eJ.s===403&&/not allowed/.test(eJ.j.error)&&eS.s===200&&(await call('GET','/ai/status')).j.can_use===true,[eJ.s,eS.s]);
  await as('juma@test.co',UP);ok('the status tells a blocked person they cannot use it',(await call('GET','/ai/status')).j.can_use===false);

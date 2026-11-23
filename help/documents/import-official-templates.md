@@ -10,7 +10,7 @@ The wizards fill **official Word templates**. They must be loaded once.
 ## Steps (Senior or Manager)
 
 1. Open **Templates**.
-2. Press **Import Word package**.
+2. Press **Add from a file**, then **Import Word package**.
 3. Wait for the message. The forms and resolutions appear in the list marked **Word file** / **BRELA form**.
 
 Importing again is safe: it adds the templates that are missing and leaves the ones you already have unchanged (so a new package brings in only its new forms). To change an existing template's Word file, use **Upload edited Word** on that template ([Replacing the Word file safely](help:documents/template-versions-and-approval)).
@@ -18,6 +18,8 @@ Importing again is safe: it adds the templates that are missing and leaves the o
 The package also holds forms that do not have a wizard yet (for example Forms 213c, 107, 15a, 15b, 15c and 15f). They are imported and shown in **Templates** (Forms 114, 33a, 09, 68, 173a and 99 come with a resolution, T10 to T15, made by their wizards), but nobody can generate them until a wizard exists for them, and the package marks them as pending the senior's review.
 
 The package also holds **Memorandum and Articles of Association**, the senior's own Word template. Its wizard fills the company name, objects, share capital and subscribers from what you type (nothing has to be saved yet); see [Memorandum and Articles](help:documents/wizard-memorandum-and-articles).
+
+It also holds the **Business Plan for Establishing an Industry**, made by its wizard ([Industrial business plan](help:documents/wizard-industrial-business-plan)).
 
 ## If it fails
 
